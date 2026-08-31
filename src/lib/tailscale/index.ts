@@ -16,6 +16,7 @@ export {
 export type { FetchTailnetDataOptions } from './client';
 
 export { parseDevicesResponse, parseVipServicesResponse, TailscaleParseError } from './parse';
+export type { VipServicesParseResult } from './parse';
 
 export { createSessionTokenStore } from './session-store';
 export type { SessionKV } from './session-store';

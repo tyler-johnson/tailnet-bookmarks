@@ -103,17 +103,24 @@ export async function fetchDevices(accessToken: string, fetchImpl: FetchFn = fet
 /**
  * GET /api/v2/tailnet/-/vip-services. Never throws. A request failure
  * (network, HTTP status, invalid JSON) becomes `{ status: 'unknown' }`.
- * A 200 with an unrecognized-but-valid JSON body is `{ status: 'ok',
- * items: [] }` (or partial items) instead — the request succeeded, so
- * this is not the failure the "present vs. unknown" rule guards against;
- * see parse.ts and DESIGN.md "Known limits" / "Service response shape
- * unverified".
+ * A 200 whose body doesn't match any envelope parseVipServicesResponse
+ * recognizes is *also* `{ status: 'unknown' }`: the vip-services shape
+ * is UNVERIFIED (DESIGN.md "Known limits"), and guessing the payload key
+ * wrong produces the same "zero rows" shape a 500 does, which the
+ * per-source-slices rule exists specifically to keep out of the desired
+ * set. A recognized envelope with zero rows — a tailnet that genuinely
+ * declares no services — is `{ status: 'ok', items: [] }`, distinct from
+ * that. See parse.ts's VipServicesParseResult.
  */
 export async function fetchServices(accessToken: string, fetchImpl: FetchFn = fetch): Promise<Slice<TailscaleService>> {
   const result = await requestJson(VIP_SERVICES_URL, { headers: authHeader(accessToken) }, fetchImpl);
   if (!result.ok) return { status: 'unknown', reason: result.reason };
 
-  return { status: 'ok', items: parseVipServicesResponse(result.json) };
+  const parsed = parseVipServicesResponse(result.json);
+  if (!parsed.recognized) {
+    return { status: 'unknown', reason: 'vip-services response envelope not recognized' };
+  }
+  return { status: 'ok', items: parsed.items };
 }
 
 /**

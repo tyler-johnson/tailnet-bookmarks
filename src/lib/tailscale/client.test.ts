@@ -171,11 +171,19 @@ describe('fetchServices — present vs. unknown', () => {
     expect(slice.status).toBe('unknown');
   });
 
-  it('is ok with zero items — not unknown — when a 200 body has an unrecognized shape', async () => {
-    // Distinguishes a real fetch failure (above) from the vip-services
-    // shape genuinely being something the defensive parser doesn't
-    // recognize: the request succeeded, so it must not read as unknown.
+  it('is unknown — not ok-with-zero — when a 200 body has no recognized envelope', async () => {
+    // The vip-services shape is UNVERIFIED (DESIGN.md "Known limits"). A
+    // payload key we failed to guess produces the same "zero rows" shape
+    // a 500 does, so it must not silently read as an empty desired set —
+    // that is exactly what the per-source-slices rule exists to prevent,
+    // just arriving through the parser instead of a failed request.
     const fetchImpl = vi.fn<FetchImpl>(async () => jsonResponse({ somethingCompletelyDifferent: [] }));
+    const slice = await fetchServices('token', fetchImpl);
+    expect(slice.status).toBe('unknown');
+  });
+
+  it('is ok with zero items when a recognized envelope genuinely holds none — a tailnet with no services must reconcile to zero', async () => {
+    const fetchImpl = vi.fn<FetchImpl>(async () => jsonResponse({ vipServices: [] }));
     const slice = await fetchServices('token', fetchImpl);
     expect(slice).toEqual({ status: 'ok', items: [] });
   });

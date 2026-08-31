@@ -58,39 +58,51 @@ describe('parseDevicesResponse', () => {
 });
 
 describe('parseVipServicesResponse', () => {
+  /** Asserts the envelope was recognized and returns its items, for
+   * tests that only care about the parsed rows. */
+  function recognizedItems(json: unknown) {
+    const result = parseVipServicesResponse(json);
+    if (!result.recognized) throw new Error('expected a recognized envelope');
+    return result.items;
+  }
+
   it('parses the inferred vipServices envelope', () => {
-    const services = parseVipServicesResponse(vipServicesResponseFixture);
-    expect(services).toEqual([
+    expect(recognizedItems(vipServicesResponseFixture)).toEqual([
       { name: 'svc:grafana', addrs: ['100.100.100.50'], ports: [{ port: 3000, protocol: 'tcp' }], comment: 'Grafana dashboards' },
       { name: 'svc:paperless', addrs: ['100.100.100.51'], ports: [{ port: 80, protocol: 'tcp' }, { port: 443, protocol: 'tcp' }], comment: '' },
     ]);
   });
 
   it('also accepts a "services" envelope', () => {
-    const services = parseVipServicesResponse({ services: [{ name: 'svc:x', addrs: [], ports: [] }] });
-    expect(services).toEqual([{ name: 'svc:x', addrs: [], ports: [], comment: undefined }]);
+    const items = recognizedItems({ services: [{ name: 'svc:x', addrs: [], ports: [] }] });
+    expect(items).toEqual([{ name: 'svc:x', addrs: [], ports: [], comment: undefined }]);
   });
 
   it('also accepts a bare array', () => {
-    const services = parseVipServicesResponse([{ name: 'svc:x', addrs: [], ports: [] }]);
-    expect(services.map((s) => s.name)).toEqual(['svc:x']);
+    const items = recognizedItems([{ name: 'svc:x', addrs: [], ports: [] }]);
+    expect(items.map((s) => s.name)).toEqual(['svc:x']);
   });
 
-  it('never throws on an unrecognized top-level shape, and returns no items', () => {
-    expect(parseVipServicesResponse(null)).toEqual([]);
-    expect(parseVipServicesResponse('garbage')).toEqual([]);
-    expect(parseVipServicesResponse(42)).toEqual([]);
-    expect(parseVipServicesResponse({ somethingElse: true })).toEqual([]);
+  it('a recognized envelope with zero rows is recognized, with an empty item list — a tailnet with no services must reconcile to zero, not freeze', () => {
+    expect(parseVipServicesResponse({ vipServices: [] })).toEqual({ recognized: true, items: [] });
+    expect(parseVipServicesResponse([])).toEqual({ recognized: true, items: [] });
+  });
+
+  it('never throws on an unrecognized top-level shape, and reports it as unrecognized rather than zero items', () => {
+    expect(parseVipServicesResponse(null)).toEqual({ recognized: false });
+    expect(parseVipServicesResponse('garbage')).toEqual({ recognized: false });
+    expect(parseVipServicesResponse(42)).toEqual({ recognized: false });
+    expect(parseVipServicesResponse({ somethingElse: true })).toEqual({ recognized: false });
   });
 
   it('skips entries with no usable name', () => {
-    const services = parseVipServicesResponse({ vipServices: [{ addrs: [], ports: [] }, { name: 'svc:ok', addrs: [], ports: [] }] });
-    expect(services.map((s) => s.name)).toEqual(['svc:ok']);
+    const items = recognizedItems({ vipServices: [{ addrs: [], ports: [] }, { name: 'svc:ok', addrs: [], ports: [] }] });
+    expect(items.map((s) => s.name)).toEqual(['svc:ok']);
   });
 
   describe('port formats', () => {
     it('accepts bare numbers', () => {
-      const [service] = parseVipServicesResponse({ vipServices: [{ name: 'svc:x', ports: [80, 443] }] });
+      const [service] = recognizedItems({ vipServices: [{ name: 'svc:x', ports: [80, 443] }] });
       expect(service!.ports).toEqual([
         { port: 80, protocol: 'tcp' },
         { port: 443, protocol: 'tcp' },
@@ -98,7 +110,7 @@ describe('parseVipServicesResponse', () => {
     });
 
     it('accepts "port/proto" and "proto/port" and "proto:port" strings', () => {
-      const [service] = parseVipServicesResponse({
+      const [service] = recognizedItems({
         vipServices: [{ name: 'svc:x', ports: ['80/tcp', 'udp/53', 'tcp:22', '8080'] }],
       });
       expect(service!.ports).toEqual([
@@ -110,14 +122,14 @@ describe('parseVipServicesResponse', () => {
     });
 
     it('accepts {port, protocol} objects', () => {
-      const [service] = parseVipServicesResponse({
+      const [service] = recognizedItems({
         vipServices: [{ name: 'svc:x', ports: [{ port: 51820, protocol: 'udp' }] }],
       });
       expect(service!.ports).toEqual([{ port: 51820, protocol: 'udp' }]);
     });
 
     it('drops unparseable or out-of-range port entries without failing the service', () => {
-      const [service] = parseVipServicesResponse({
+      const [service] = recognizedItems({
         vipServices: [{ name: 'svc:x', ports: ['not-a-port', 0, -1, 70000, { protocol: 'tcp' }, 443] }],
       });
       expect(service!.ports).toEqual([{ port: 443, protocol: 'tcp' }]);

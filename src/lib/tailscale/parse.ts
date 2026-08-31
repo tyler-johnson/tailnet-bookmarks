@@ -41,35 +41,55 @@ export function parseDevicesResponse(json: unknown): TailscaleDevice[] {
   return devices;
 }
 
+/** Discriminates "we found a list, even an empty one" from "none of our
+ * guesses at the envelope matched" — never throws, never collapses the
+ * two to a bare `[]`. See parseVipServicesResponse. */
+export type VipServicesParseResult = { recognized: true; items: TailscaleService[] } | { recognized: false };
+
 /**
  * Parses `GET /api/v2/tailnet/-/vip-services`. UNVERIFIED shape (see
- * types.ts and DESIGN.md "Known limits"). This never throws: an
- * unrecognized top-level shape yields zero items rather than an error,
- * because a 200 response means the fetch itself succeeded — client.ts
- * only produces an "unknown" slice from a failed request (network error,
- * non-2xx status, or a body that isn't JSON at all), never from a
- * surprising-but-valid JSON shape. A handful of plausible envelopes and
- * port encodings are accepted; anything else is dropped per-entry.
+ * types.ts and DESIGN.md "Known limits"). This never throws, but it does
+ * distinguish two different 200s that both look like "nothing to parse":
+ *
+ * - A recognized envelope (a bare array, or one of the plausible keys
+ *   below) whose list is empty means the tailnet genuinely declares no
+ *   services — `{ recognized: true, items: [] }`. That must reconcile to
+ *   zero, not freeze the slice.
+ * - No recognized envelope at all means our guess at the unverified
+ *   shape was wrong, not that the tailnet has no services —
+ *   `{ recognized: false }`. client.ts turns this into an unknown slice,
+ *   same as a network failure: DESIGN.md's per-source-slices rule exists
+ *   precisely so a 500 from vip-services can't delete every service
+ *   bookmark, and a payload key we failed to guess produces the exact
+ *   same "zero rows, one poll" shape a 500 does — it must not be allowed
+ *   to arrive at the planner as ok-with-zero.
+ *
+ * Individual malformed entries inside a recognized envelope are still
+ * skipped rather than failing the whole read.
  */
-export function parseVipServicesResponse(json: unknown): TailscaleService[] {
-  const rawList = extractList(json);
+export function parseVipServicesResponse(json: unknown): VipServicesParseResult {
+  const list = extractList(json);
+  if (!list.recognized) return { recognized: false };
+
   const services: TailscaleService[] = [];
-  for (const raw of rawList) {
+  for (const raw of list.items) {
     const service = parseOneService(raw);
     if (service) services.push(service);
   }
-  return services;
+  return { recognized: true, items: services };
 }
 
-function extractList(json: unknown): unknown[] {
-  if (Array.isArray(json)) return json;
+type ExtractedList = { recognized: true; items: unknown[] } | { recognized: false };
+
+function extractList(json: unknown): ExtractedList {
+  if (Array.isArray(json)) return { recognized: true, items: json };
   if (isRecord(json)) {
     for (const key of ['vipServices', 'services', 'vip-services', 'items']) {
       const value = json[key];
-      if (Array.isArray(value)) return value;
+      if (Array.isArray(value)) return { recognized: true, items: value };
     }
   }
-  return [];
+  return { recognized: false };
 }
 
 function parseOneService(raw: unknown): TailscaleService | undefined {
