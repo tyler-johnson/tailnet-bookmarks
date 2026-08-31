@@ -15,9 +15,9 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           # Pinned rather than floating: the reviewer notes tell AMO which
           # Node built the submitted package, and a moving target there is
@@ -62,9 +62,13 @@ jobs:
           diff -r .output/firefox-mv3 "$GITHUB_WORKSPACE/.output/firefox-mv3"
           echo "sources archive reproduces the submitted package"
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: extension-packages
+          # .output is a dot-directory and the glob skips hidden paths
+          # unless told otherwise, so without this the step finds nothing
+          # and says so in a warning rather than failing.
+          include-hidden-files: true
           path: .output/*.zip
 
       - name: Attach the packages to the release
