@@ -1,0 +1,78 @@
+name: release
+
+# Tag a commit v<version> and this builds the three artifacts a store
+# submission needs and attaches them to a GitHub release. Nothing is
+# submitted anywhere; the files are downloaded and uploaded by hand.
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          # Pinned rather than floating: the reviewer notes tell AMO which
+          # Node built the submitted package, and a moving target there is
+          # a reproduction they cannot match.
+          node-version: '24.20.0'
+
+      - run: npm ci
+
+      # The tag is the release's only claim about what is inside it. A tag
+      # that disagrees with the manifest ships a package whose version says
+      # something else, which on both stores is a number that cannot be
+      # taken back.
+      - name: Tag must match package.json version
+        if: startsWith(github.ref, 'refs/tags/')
+        run: |
+          PKG="$(node -p "require('./package.json').version")"
+          TAG="${GITHUB_REF_NAME#v}"
+          echo "package.json=$PKG tag=$TAG"
+          test "$PKG" = "$TAG"
+
+      - run: npm test
+
+      - run: npx svelte-check --tsconfig ./tsconfig.json
+
+      - name: Build and zip both engines
+        run: |
+          npx wxt zip
+          npx wxt zip -b firefox
+
+      # AMO rebuilds the submitted sources archive and diffs it against the
+      # uploaded package, requiring no differences. That broke once already,
+      # silently, and was only found by doing the rebuild by hand. Now every
+      # release does it.
+      - name: Sources archive must rebuild byte-identically
+        run: |
+          VERSION="$(node -p "require('./package.json').version")"
+          WORK="$(mktemp -d)"
+          unzip -q ".output/tailnet-bookmarks-${VERSION}-sources.zip" -d "$WORK"
+          cd "$WORK"
+          npm ci --silent
+          npx wxt build -b firefox
+          diff -r .output/firefox-mv3 "$GITHUB_WORKSPACE/.output/firefox-mv3"
+          echo "sources archive reproduces the submitted package"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: extension-packages
+          path: .output/*.zip
+
+      - name: Attach the packages to the release
+        if: startsWith(github.ref, 'refs/tags/')
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" \
+            --title "$GITHUB_REF_NAME" \
+            --notes "Built from ${GITHUB_SHA}. The sources archive is verified in CI to rebuild this exact package; AMO wants it alongside the Firefox zip." \
+            .output/*.zip

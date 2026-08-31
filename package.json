@@ -1,6 +1,6 @@
 {
   "name": "tailnet-bookmarks",
-  "description": "Mirrors a Tailscale tailnet's Devices and Services into a browser bookmarks folder.",
+  "description": "Mirrors your Tailscale Devices and Services into a browser bookmarks folder.",
   "private": true,
   "version": "0.1.1",
   "type": "module",
