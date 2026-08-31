@@ -277,7 +277,13 @@ describe('rule 4: duplicate URLs within the folder', () => {
     expect(ops).toContainEqual({ type: 'updateTitle', id: 'a-node', url: 'https://pi.tail-scale.ts.net/', title: 'alpha' });
   });
 
-  it('falls back to id, deterministically, when dateAdded and title both tie', () => {
+  it('flight #9: emits no removal when dateAdded and title both tie — id is local and does not replicate', () => {
+    // A tie on both dateAdded and title leaves nothing to order the
+    // pair by except `id`, which is local per browser. Deciding a
+    // removal on it is exactly the flight #9 defect: two machines can
+    // pick opposite survivors, each deletes the other's, and both
+    // copies vanish and get recreated forever. The fix withholds the
+    // removeBookmark op for this group entirely rather than guessing.
     const desired = desiredOk([bookmark('https://pi.tail-scale.ts.net/', 'pi')]);
     const actual = [
       folder(1000, [
@@ -287,7 +293,23 @@ describe('rule 4: duplicate URLs within the folder', () => {
     ];
 
     const { ops } = plan(desired, actual, {}, 100_000, INTERVAL);
-    expect(ops).toEqual([{ type: 'removeBookmark', id: 'zid', url: 'https://pi.tail-scale.ts.net/' }]);
+    expect(ops).toEqual([]);
+  });
+
+  it('still resolves normally (survivor kept, loser removed) when dateAdded actually orders the group', () => {
+    // A duplicate group that CAN be ordered by data that replicates —
+    // dateAdded differs — is unaffected by the flight #9 fix and still
+    // removes the loser, same as before.
+    const desired = desiredOk([bookmark('https://pi.tail-scale.ts.net/', 'pi')]);
+    const actual = [
+      folder(1000, [
+        actualBookmark('https://pi.tail-scale.ts.net/', 'pi', 500, 'older'),
+        actualBookmark('https://pi.tail-scale.ts.net/', 'pi', 900, 'newer'),
+      ]),
+    ];
+
+    const { ops } = plan(desired, actual, {}, 100_000, INTERVAL);
+    expect(ops).toEqual([{ type: 'removeBookmark', id: 'newer', url: 'https://pi.tail-scale.ts.net/' }]);
   });
 
   it('suppresses the removal (but still resolves a survivor for content diffing) when a slice is unknown', () => {
@@ -338,12 +360,24 @@ describe('rule 4: duplicate managed folders', () => {
     expect(ops).toContainEqual({ type: 'createBookmark', url: 'https://only-in-new.tail-scale.ts.net/', title: 'y' });
   });
 
-  it('falls back to id when duplicate folders share dateAdded', () => {
+  it('flight #9: emits no removal when duplicate folders share dateAdded — title never discriminates and id is local', () => {
+    // Folder title can never discriminate duplicates (every candidate
+    // already matches the derived name), so a dateAdded tie leaves
+    // only `id`, which does not replicate. The fix withholds
+    // removeDuplicateFolder for this group rather than deciding by id.
     const desired = desiredOk([]);
     const actual = [folder(1000, [], 'zzz'), folder(1000, [], 'aaa')];
 
     const { ops } = plan(desired, actual, {}, 100_000, INTERVAL);
-    expect(ops).toEqual([{ type: 'removeDuplicateFolder', folderId: 'zzz' }]);
+    expect(ops).toEqual([]);
+  });
+
+  it('still removes the loser when dateAdded actually orders the duplicate folders', () => {
+    const desired = desiredOk([]);
+    const actual = [folder(2000, [], 'newer'), folder(1000, [], 'older')];
+
+    const { ops } = plan(desired, actual, {}, 100_000, INTERVAL);
+    expect(ops).toEqual([{ type: 'removeDuplicateFolder', folderId: 'newer' }]);
   });
 
   it('suppresses removeDuplicateFolder when a slice is unknown, but still diffs content against the chosen survivor', () => {

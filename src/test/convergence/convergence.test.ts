@@ -334,6 +334,95 @@ describe('assertion 4: the steady state emits zero ops per run, indefinitely', (
 // property holds even when a browser is reconciling against a
 // partially-synced tree for many polls in a row, not just one.
 
+// ---------------------------------------------------------------------
+// Flight #9 — an exact dateAdded tie on independent creation does not
+// thrash.
+// ---------------------------------------------------------------------
+//
+// Assertion 1 and the late-delivery hazard above both use
+// `perBrowserNow`, which is right for realistic machines but also
+// means neither test can ever manufacture a PERSISTENT tie — two
+// browsers' clocks always differ by the fixed per-name offset, so any
+// accidental collision breaks on the very next recreate. This is the
+// adversarial case that offset hides: a shared, non-offset clock (or,
+// in reality, two real machines whose clocks agree to the tracked
+// resolution at the moment of creation) drives `dateAdded` — and, for
+// bookmarks, `title` too, since both machines compute the same desired
+// title for the same URL — into an EXACT, PERSISTENT tie.
+// `compareBookmarksForSurvivor`/`compareFoldersForSurvivor` then have
+// nothing left to order by except the local `id`, which does not
+// replicate. Before the flight #9 fix, this drove an unbounded
+// delete/recreate loop: see planner.ts's rewritten doc comments on
+// those two comparators for the full mechanism, and this test's own
+// history for confirmation it fails against the pre-fix tie-break. The
+// fix selects a survivor for diffing as before, but withholds the
+// removal entirely for a group that ties on every field that
+// replicates — so the correct outcome here is not "eventually goes
+// quiet" but "never emits the removal in the first place, and the
+// duplicate is stable across many polls rather than flapping".
+
+describe('flight #9: an exact dateAdded tie on independent creation does not thrash', () => {
+  it('bookmarks: independently created nodes for the same URL, tied on dateAdded and title, are never deleted and stay stable', () => {
+    const world = createWorld(['A', 'B']);
+    const { foldersByBrowser } = seedSharedFolder(world, ['A', 'B'], 100);
+    const url = 'https://tied.tail-scale.ts.net/';
+    const title = 'Tied'; // both machines derive the same title for the same URL, so this ties too, exactly like dateAdded
+    const desired = desiredOk([bookmarkEntry(url, title)]);
+
+    const ROUNDS = 12;
+    const rounds: Record<string, Op[]>[] = [];
+    // Deliberately a SHARED clock (not `perBrowserNow`) so the
+    // independent create on round 1, and any recreate thereafter,
+    // ties exactly rather than merely colliding once.
+    for (let i = 0; i < ROUNDS; i++) {
+      rounds.push(runPoll(world, { now: 50_000 + i * INTERVAL, deleteLagMs: INTERVAL, desired }));
+    }
+
+    for (const [i, round] of rounds.entries()) {
+      for (const [name, ops] of Object.entries(round)) {
+        for (const op of ops) {
+          expect(op.type, `round ${i + 1}, browser ${name}: unexpected op with a persistent dateAdded/title tie`).not.toBe('removeBookmark');
+        }
+      }
+    }
+
+    const browserA = world.browsers.get('A')!;
+    const browserB = world.browsers.get('B')!;
+    const aCount = browserA.folders.flatMap((f) => f.bookmarks).filter((b) => b.url === url).length;
+    const bCount = browserB.folders.flatMap((f) => f.bookmarks).filter((b) => b.url === url).length;
+    expect(aCount, 'browser A should still hold both tied duplicates, undeleted, after many polls').toBe(2);
+    expect(bCount, 'browser B should still hold both tied duplicates, undeleted, after many polls').toBe(2);
+  });
+
+  it('folders: two independently created managed folders, tied on dateAdded, are never removed and stay stable', () => {
+    const world = createWorld(['A', 'B']);
+    // Folder title can never discriminate duplicates (every candidate
+    // already matches the derived name), so a dateAdded tie here is
+    // even more direct than the bookmark case — there is no title
+    // fallback step at all.
+    const desired = desiredOk([]);
+
+    const ROUNDS = 12;
+    const rounds: Record<string, Op[]>[] = [];
+    for (let i = 0; i < ROUNDS; i++) {
+      rounds.push(runPoll(world, { now: 50_000 + i * INTERVAL, deleteLagMs: INTERVAL, desired }));
+    }
+
+    for (const [i, round] of rounds.entries()) {
+      for (const [name, ops] of Object.entries(round)) {
+        for (const op of ops) {
+          expect(op.type, `round ${i + 1}, browser ${name}: unexpected op with a persistent folder dateAdded tie`).not.toBe('removeDuplicateFolder');
+        }
+      }
+    }
+
+    const browserA = world.browsers.get('A')!;
+    const browserB = world.browsers.get('B')!;
+    expect(browserA.folders, 'browser A should still hold both tied duplicate folders, unremoved, after many polls').toHaveLength(2);
+    expect(browserB.folders, 'browser B should still hold both tied duplicate folders, unremoved, after many polls').toHaveLength(2);
+  });
+});
+
 describe('hazard: late delivery does not prevent convergence, only delays it', () => {
   it('goes empty and stays empty with a 5-poll delivery delay', () => {
     const world = createWorld(['A', 'B']);

@@ -121,12 +121,15 @@ export interface PlanResult {
  *
  * Duplicate managed folders (more than one entry in `actualFolders`)
  * and duplicate URLs within the chosen folder both resolve to the
- * survivor with the oldest `dateAdded`; see `pickFolderSurvivor` and
- * `pickBookmarkSurvivor` for the deterministic tie-break below that.
- * The *selection* of a survivor always happens (content planning needs
- * a single target folder and a single node per URL to diff against);
- * whether the *losers* actually get removed is gated by the same rule
- * that gates rule 5, below.
+ * survivor with the oldest `dateAdded`; see `compareFoldersForSurvivor`
+ * and `compareBookmarksForSurvivor` for the deterministic tie-break
+ * below that. The *selection* of a survivor always happens (content
+ * planning needs a single target folder and a single node per URL to
+ * diff against); whether the *losers* actually get removed is gated
+ * by the unknown-slice rule below **and** by whether the tie-break
+ * ever had to fall back to the non-replicating `id` field to choose
+ * between them — see those comparators' doc comments for why a
+ * removal decided by `id` is never emitted.
  *
  * ## Rule 4 (continued) / the per-flight ruling on unknown slices
  *
@@ -210,8 +213,18 @@ export function plan(
     const ranked = [...actualFolders].sort(compareFoldersForSurvivor);
     chosenFolder = ranked[0];
     if (!deletesSuppressed) {
+      // A loser only gets removed when `dateAdded` — the one field
+      // that replicates and discriminates folder duplicates — actually
+      // says it lost. When it ties the survivor, `compareFoldersForSurvivor`
+      // still had to fall to `id` to produce *some* ordering, but `id`
+      // is local and does not replicate, so two machines can pick
+      // opposite survivors for the same tied pair. See that
+      // comparator's doc comment for what goes wrong if this removal
+      // fires anyway.
       for (const loser of ranked.slice(1)) {
-        ops.push({ type: 'removeDuplicateFolder', folderId: loser.id });
+        if (loser.dateAdded !== chosenFolder!.dateAdded) {
+          ops.push({ type: 'removeDuplicateFolder', folderId: loser.id });
+        }
       }
     }
   }
@@ -275,6 +288,18 @@ function hasDuplicateUrls(bookmarks: readonly ActualBookmark[]): boolean {
  * Groups bookmarks by URL and picks one survivor per URL via
  * `compareBookmarksForSurvivor`. A URL with only one node has no
  * "loser" at all — it just passes through as its own survivor.
+ *
+ * A survivor is always chosen, even when the group is a dead tie on
+ * every field that replicates — `plan` needs exactly one node per URL
+ * to diff titles against and to key `updateTitle`/`removeBookmark` ops
+ * on, tie or not. But `duplicateLosers` (which the caller turns
+ * directly into `removeBookmark` ops) omits any loser that ties the
+ * survivor on `dateAdded` and `title`, the two fields DESIGN.md's
+ * "Convergent identity" rule actually relies on replicating. See
+ * `compareBookmarksForSurvivor`'s doc comment for why: only `id`
+ * distinguishes such a pair, `id` is local, and emitting a removal
+ * decided by it is how flight #9 found the planner could delete every
+ * copy of a URL and never converge.
  */
 function resolveDuplicateBookmarks(bookmarks: readonly ActualBookmark[]): {
   survivorByUrl: Map<string, ActualBookmark>;
@@ -291,8 +316,13 @@ function resolveDuplicateBookmarks(bookmarks: readonly ActualBookmark[]): {
   const duplicateLosers: ActualBookmark[] = [];
   for (const [url, group] of byUrl) {
     const ranked = [...group].sort(compareBookmarksForSurvivor);
-    survivorByUrl.set(url, ranked[0]!);
-    duplicateLosers.push(...ranked.slice(1));
+    const survivor = ranked[0]!;
+    survivorByUrl.set(url, survivor);
+    for (const loser of ranked.slice(1)) {
+      if (loser.dateAdded !== survivor.dateAdded || loser.title !== survivor.title) {
+        duplicateLosers.push(loser);
+      }
+    }
   }
   return { survivorByUrl, duplicateLosers };
 }
@@ -305,27 +335,44 @@ function resolveDuplicateBookmarks(bookmarks: readonly ActualBookmark[]): {
  *
  * Two duplicate bookmarks share a URL by construction (that's the
  * grouping key), so `dateAdded` is the tie-break DESIGN.md names
- * directly. When *that* also ties — plausible here specifically,
- * since the two most likely duplicates are independent creations of
+ * directly. When *that* also ties — exactly the case that matters
+ * most, since the most likely duplicates are independent creations of
  * the very same desired entry by two machines racing within one poll
- * interval (DESIGN.md's "Two writers" hazard), which could plausibly
- * fire close enough in wall-clock time to collide — fall back to
- * `title` (lexicographic). Title is real, synced data both machines
- * observe identically once merged, so this still picks the same
- * survivor everywhere without coordination.
+ * interval (DESIGN.md's "Two writers" hazard) and landing in the same
+ * millisecond — fall back to `title` (lexicographic). Title is real,
+ * synced data, but it cannot break this particular tie: both machines
+ * compute the same desired title for the same URL, so title is equal
+ * by construction in precisely the case dateAdded already tied for
+ * the same reason.
  *
- * If dateAdded AND title both tie, the two nodes are observably
- * identical in everything this module is allowed to key on (rule 1
- * rules out `id` and index for *ops*, but nothing stops using `id`
- * purely as an internal, non-emitted tie-break here). `id` is not
- * guaranteed to agree across machines, so in this fully-degenerate
- * case two machines could disagree on which physical node "is" the
- * survivor. That is not the infinite loop DESIGN.md's "Two writers"
- * hazard describes, though: whichever node is deleted, if the URL is
- * still desired it is recreated immediately in the very same run
- * (creates are not lagged), so the worst case is one extra
- * delete-then-recreate cycle before every machine converges on a
- * single node — bounded, not persistent.
+ * That leaves `id`, which this comparator still applies so that
+ * `resolveDuplicateBookmarks` always has *some* total order to pick a
+ * single survivor from — `plan` needs exactly one node per URL to diff
+ * regardless of whether the group is a genuine tie. But `id` is the
+ * local bookmark id: it does not replicate, so the same synced node
+ * carries a different `id` on each machine, and two machines asked to
+ * order an (dateAdded, title)-tied pair can and do answer oppositely.
+ *
+ * An earlier version of this comment argued that didn't matter,
+ * because a deleted node is recreated in the same run (creates are
+ * not lagged), so the worst case was "one extra delete-then-recreate
+ * cycle" before convergence. That reasoning assumed one node gets
+ * deleted. When two machines disagree on the survivor, *each* deletes
+ * the node it considers the loser — one by each machine — so both
+ * copies vanish, sync replicates both deletes, and since the URL is
+ * still desired, both machines recreate it next run with a fresh
+ * `dateAdded` that ties again. Flight #9's convergence harness forced
+ * exactly this and confirmed it never terminates.
+ *
+ * So `id` is used here only to produce a deterministic *survivor* for
+ * this run's diffing — it is never allowed to decide a *removal*.
+ * `resolveDuplicateBookmarks` withholds the `removeBookmark` op for
+ * any loser that ties the chosen survivor on `dateAdded` and `title`,
+ * which is the only case `id` was the deciding factor. The URL stays
+ * visibly duplicated until some future write moves a `dateAdded`
+ * apart — one stale row, not an unbounded loop — which is the same
+ * discipline DESIGN.md's "Per-source slices" rule already applies to
+ * data a machine cannot know: when you cannot know, do not act.
  */
 function compareBookmarksForSurvivor(a: ActualBookmark, b: ActualBookmark): number {
   return a.dateAdded - b.dateAdded || a.title.localeCompare(b.title) || a.id.localeCompare(b.id);
@@ -335,11 +382,18 @@ function compareBookmarksForSurvivor(a: ActualBookmark, b: ActualBookmark): numb
  * Same rule for duplicate managed folders, with one difference: every
  * candidate folder passed to `plan` already matches the derived folder
  * name (that's what makes it a candidate), so folder *title* can never
- * discriminate between duplicates the way bookmark title can. After
- * `dateAdded`, this falls straight to `id`, for the same bounded,
- * self-correcting reason as the bookmark tie-break's final step: a
- * losing folder's still-desired contents get recreated in the survivor
- * on this very run.
+ * discriminate between duplicates the way bookmark title can — this
+ * falls from `dateAdded` straight to `id`. That makes the hazard in
+ * `compareBookmarksForSurvivor`'s doc comment worse here, not better:
+ * two folders created independently by two machines in the same poll
+ * interval can tie on `dateAdded` with no replicated field left to
+ * fall back on, `id` does not replicate, and a losing folder that is
+ * actually removed takes its contents with it. `id` is still used
+ * below to give this a deterministic total order — `plan` needs one
+ * chosen folder to target regardless — but as with bookmarks it never
+ * decides a *removal*: the caller (`plan`'s rule 4a block) withholds
+ * `removeDuplicateFolder` for any loser that ties the survivor on
+ * `dateAdded`.
  */
 function compareFoldersForSurvivor(a: ActualFolder, b: ActualFolder): number {
   return a.dateAdded - b.dateAdded || a.id.localeCompare(b.id);
