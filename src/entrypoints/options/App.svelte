@@ -224,33 +224,34 @@
       </p>
     </div>
 
-    <div class="flex flex-col gap-3 rounded-box bg-base-200 p-3">
-      <span class="text-xs font-medium">
-        When you create the client, check exactly these two scopes — both Read:
-      </span>
-      <ul class="flex flex-col gap-2">
-        <li class="flex flex-wrap items-center gap-2">
-          <span class="text-xs">
-            General <span class="text-base-content/50">&rsaquo;</span>
-            <span class="font-medium">Services</span>
-          </span>
-          <span class="badge badge-sm badge-primary badge-soft">Read</span>
-        </li>
-        <li class="flex flex-wrap items-center gap-2">
-          <span class="text-xs">
-            Devices <span class="text-base-content/50">&rsaquo;</span>
-            <span class="font-medium">Core</span>
-          </span>
-          <span class="badge badge-sm badge-primary badge-soft">Read</span>
-        </li>
-      </ul>
-      <span class="text-xs text-base-content/70">
-        In the Tailscale admin console, under Settings &rarr; OAuth clients. Nothing else needs
-        checking — this extension only reads, and never changes anything on your tailnet. A
-        client missing either scope still saves here, then fails later with a permission error
-        when it tries to read.
-      </span>
-    </div>
+    <details class="collapse collapse-arrow bg-base-200">
+      <summary class="collapse-title text-sm font-medium">Required Scopes</summary>
+      <div class="collapse-content flex flex-col gap-3">
+        <ul class="flex flex-col gap-2">
+          <li class="flex flex-wrap items-center gap-2">
+            <span class="text-xs">
+              General <span class="text-base-content/50">&rsaquo;</span>
+              <span class="font-medium">Services</span>
+            </span>
+            <span class="badge badge-sm badge-primary badge-soft">Read</span>
+          </li>
+          <li class="flex flex-wrap items-center gap-2">
+            <span class="text-xs">
+              Devices <span class="text-base-content/50">&rsaquo;</span>
+              <span class="font-medium">Core</span>
+            </span>
+            <span class="badge badge-sm badge-primary badge-soft">Read</span>
+          </li>
+        </ul>
+        <span class="text-xs text-base-content/70">
+          Check exactly these two when you create the client, in the Tailscale admin console
+          under Settings &rarr; OAuth clients. Nothing else needs checking &mdash; this
+          extension only reads, and never changes anything on your tailnet. A client missing
+          either scope still saves here, then fails later with a permission error when it
+          tries to read.
+        </span>
+      </div>
+    </details>
 
     <label class="flex w-full flex-col gap-2">
       <span class="text-sm font-medium">OAuth client ID</span>
