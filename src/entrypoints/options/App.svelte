@@ -245,10 +245,7 @@
         </ul>
         <span class="text-xs text-base-content/70">
           In the Tailscale admin console, go to Settings &rarr; Trust Credentials and create
-          an OAuth client with exactly these two scopes. Nothing else needs checking &mdash;
-          this extension only reads, and never changes anything on your tailnet. A client
-          missing either scope still saves here, then fails later with a permission error
-          when it tries to read.
+          an OAuth client with exactly these two scopes.
         </span>
       </div>
     </details>
