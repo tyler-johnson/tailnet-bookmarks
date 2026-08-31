@@ -21,6 +21,11 @@ export default defineConfig({
           browser_specific_settings: {
             gecko: {
               id: 'tailnet-bookmarks@tylerjohnson.me',
+              // Nothing is collected or transmitted: credentials are typed
+              // per machine and go only to api.tailscale.com, the device
+              // and service lists become local bookmarks, and there is no
+              // telemetry. Required on new AMO submissions from 3 Nov 2025.
+              data_collection_permissions: { required: ['none'] },
             },
           },
         }
