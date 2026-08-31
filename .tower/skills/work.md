@@ -6,6 +6,8 @@ You are one agent flying one flight. You have no memory of the ones before you a
 
 The orchestrator claims your flight and tells you its number and the worktree to fly it from. `ff tower brief <n>` is the specification: body, comments, and any question already answered. Read the whole brief before touching a file — an earlier agent may have stopped mid-flight and left you the state.
 
+Then confirm the ground the brief assumes is actually under you — the files it says exist, the commands it says pass. A flight branch is cut from `main`, so work that has not landed there is not beneath you however recently it closed. A missing base is the orchestrator's bug and it is a hold, not something to fix from inside a flight: never merge, restack, or hand-copy another branch's work to get going.
+
 `DESIGN.md` at the repo root is the standing design. The brief names the sections that bind your flight; read those and skip the rest.
 
 ## The repo
