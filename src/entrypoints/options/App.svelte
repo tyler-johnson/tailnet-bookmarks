@@ -15,7 +15,7 @@
     DEFAULT_POLL_INTERVAL_MINUTES,
     type LastRunStatus,
     type FolderRootSymbol,
-  } from './storage';
+  } from '../../lib/storage';
   import { MANUAL_SYNC_MESSAGE_TYPE, isManualSyncResponse, type ManualSyncRequest } from './messages';
 
   // storage.local — this machine only, never synced (DESIGN.md "Auth").

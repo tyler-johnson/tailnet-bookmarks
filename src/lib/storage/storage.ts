@@ -1,20 +1,24 @@
-// Storage schema for the options page, split by sensitivity exactly as
-// DESIGN.md "Auth" specifies:
+// Storage schema shared between the options page and the background run
+// loop, split by sensitivity exactly as DESIGN.md "Auth" specifies:
 //
 //   storage.local  — per machine, never synced. The OAuth client id and
 //                    secret (entered once per machine; DESIGN.md is explicit
 //                    that the secret must never leave the machine it was
 //                    typed on, and the id travels with it since the pair is
-//                    meaningless split apart) plus this machine's last
-//                    sync-run status.
+//                    meaningless split apart), this machine's last
+//                    sync-run status, and this machine's delete-lag
+//                    bookkeeping (DESIGN.md "Lagged deletes": local because
+//                    each machine counts its own two-poll window
+//                    independently — the rules converge whether or not two
+//                    machines count in step).
 //   storage.sync   — replicated to every machine on the account, so every
 //                    machine computes the same desired bookmark set: folder
 //                    parent, poll interval, and the per-source toggles.
 //
-// This module is options-owned, but the shapes below are the contract
-// flight #6 (background) reads and writes against — see the last-run status
-// section, the FolderRootSymbol section, and the closing flight comment for
-// the exact types.
+// Originally lived under src/entrypoints/options/ (flight #7); moved here
+// (flight #6) because a background entrypoint importing from another
+// entrypoint's directory is wrong — these are shared definitions, not
+// options-owned ones. The options page imports from here now instead.
 
 import { storage } from '#imports';
 import type { Browser } from 'wxt/browser';
@@ -41,9 +45,9 @@ export const oauthClientSecret = storage.defineItem<string>('local:oauthClientSe
 // tell a typo from a folder that's genuinely missing. A symbol is portable
 // where both a title and a node id are not (DESIGN.md "Convergent
 // identity"). Resolving the symbol to *this machine's* local root id is
-// flight #6's job, at reconcile time — see resolveFolderRootId below, which
-// options also uses, read-only, to label the picker with this browser's
-// own words.
+// the background run loop's job, at reconcile time — see
+// resolveFolderRootId below, which the options page also uses, read-only,
+// to label the picker with this browser's own words.
 export type FolderRootSymbol = 'toolbar' | 'menu' | 'other';
 
 export const DEFAULT_FOLDER_PARENT: FolderRootSymbol = 'other';
@@ -67,9 +71,9 @@ export const sourceServicesEnabled = storage.defineItem<boolean>('sync:sourceSer
 
 // --- storage.local: last-run status contract --------------------------------
 //
-// Key: `local:lastRunStatus`. Written by background (#6) at the start and
-// end of every reconcile run (alarm-triggered or manual); read here to
-// render status, including the "never run" state.
+// Key: `local:lastRunStatus`. Written by the background run loop at the
+// start and end of every reconcile run (alarm-triggered or manual); read
+// by the options page to render status, including the "never run" state.
 //
 // No value in storage (getValue() resolves `null`, the WxtStorageItem
 // default with no `fallback`) IS the never-run state — background does not
@@ -88,13 +92,24 @@ export type LastRunStatus =
 
 export const lastRunStatus = storage.defineItem<LastRunStatus>('local:lastRunStatus');
 
+// --- storage.local: delete-lag bookkeeping ----------------------------------
+//
+// DESIGN.md "Lagged deletes": `{url: firstMissingAt}`, the planner's own
+// `FirstMissingAt` shape (src/lib/planner). Persisted here so the run loop
+// can thread it through every run despite nothing surviving in module
+// scope across MV3 worker terminations. Local, not synced — see the file
+// header above for why that's sound.
+export const firstMissingAt = storage.defineItem<Record<string, number>>('local:firstMissingAt', {
+  fallback: {},
+});
+
 // --- symbol → local root id -------------------------------------------------
 //
-// Exported so #6 writes this mapping once, not twice. Given the live tree
-// from `browser.bookmarks.getTree()`, finds each symbol's corresponding
-// top-level node on *this* machine and returns its real (localized) id and
-// title — never a hardcoded guess independent of what the tree actually
-// contains.
+// Exported so the background run loop writes this mapping once, not
+// twice. Given the live tree from `browser.bookmarks.getTree()`, finds
+// each symbol's corresponding top-level node on *this* machine and
+// returns its real (localized) id and title — never a hardcoded guess
+// independent of what the tree actually contains.
 //
 // Two signals, in order:
 //   1. `folderType` (Chrome 134+): an explicit, localization-proof tag —
@@ -107,7 +122,9 @@ export const lastRunStatus = storage.defineItem<LastRunStatus>('local:lastRunSta
 // A symbol with no match under either signal resolves to `null` — the
 // "sensible fallback" is to say so plainly, not to guess a folder and
 // silently write to the wrong one (the same unknown-vs-empty discipline
-// DESIGN.md's "Per-source slices" applies to a failed API fetch).
+// DESIGN.md's "Per-source slices" applies to a failed API fetch). The
+// background run loop must handle this `null` return rather than assume a
+// root always exists — see src/lib/background/run.ts.
 const KNOWN_ROOT_IDS: Record<FolderRootSymbol, readonly string[]> = {
   toolbar: ['toolbar_____', '1'],
   menu: ['menu________'],
