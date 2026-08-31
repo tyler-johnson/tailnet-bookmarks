@@ -34,6 +34,10 @@ npx wxt zip -b firefox    # Firefox, plus the sources archive AMO asks for
 
 Builds are deterministic: emitted filenames carry no content hashes and the stylesheet is generated from a declared source directory, so a rebuild from the sources archive matches the shipped package byte for byte.
 
+## Privacy
+
+It handles the user's own Tailscale credentials, locally, and sends nothing to the developer. [PRIVACY.md](PRIVACY.md) is the full statement.
+
 ## License
 
 MIT, see [LICENSE](LICENSE).
