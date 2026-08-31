@@ -9,10 +9,12 @@
     sourceDevicesEnabled,
     sourceServicesEnabled,
     lastRunStatus,
+    resolveFolderRoots,
     TAILSCALE_ORIGIN,
     DEFAULT_FOLDER_PARENT,
     DEFAULT_POLL_INTERVAL_MINUTES,
     type LastRunStatus,
+    type FolderRootSymbol,
   } from './storage';
   import { MANUAL_SYNC_MESSAGE_TYPE, isManualSyncResponse, type ManualSyncRequest } from './messages';
 
@@ -23,11 +25,25 @@
 
   // storage.sync — shared config, so every machine computes the same
   // desired bookmark set (DESIGN.md "Auth" and "Sync and convergence").
-  let folderParentValue = $state(DEFAULT_FOLDER_PARENT);
+  let folderParentSymbol = $state<FolderRootSymbol>(DEFAULT_FOLDER_PARENT);
   let pollInterval = $state(DEFAULT_POLL_INTERVAL_MINUTES);
   let devicesEnabled = $state(true);
   let servicesEnabled = $state(true);
   let configSaveState = $state<'idle' | 'saving' | 'saved'>('idle');
+
+  // Plain-English fallback labels for the folder-root picker, overwritten
+  // per-symbol with this browser's own (localized) root titles once
+  // browser.bookmarks.getTree() resolves — see loadFolderRootLabels below.
+  // A root that's absent on this engine (e.g. 'menu' on Chromium) or a
+  // failed tree read just keeps its fallback label.
+  const FALLBACK_FOLDER_ROOT_LABELS: Record<FolderRootSymbol, string> = {
+    toolbar: 'Bookmarks Toolbar',
+    menu: 'Bookmarks Menu',
+    other: 'Other Bookmarks',
+  };
+  let folderRootLabels = $state<Record<FolderRootSymbol, string>>({
+    ...FALLBACK_FOLDER_ROOT_LABELS,
+  });
 
   // Host permission for the Tailscale API. Not assumed granted just because
   // it's in the manifest — Firefox MV3 doesn't re-prompt on an update that
@@ -64,7 +80,7 @@
 
       clientId = id;
       clientSecret = secret;
-      folderParentValue = parent;
+      folderParentSymbol = parent;
       pollInterval = interval;
       devicesEnabled = devices;
       servicesEnabled = services;
@@ -73,10 +89,31 @@
       loaded = true;
     })();
 
+    loadFolderRootLabels();
+
     unwatchStatus = lastRunStatus.watch((newValue) => {
       status = newValue;
     });
   });
+
+  // Reads this browser's real bookmark tree so the picker shows the roots
+  // in the user's own words (a German Firefox says "Andere Lesezeichen",
+  // not "Other Bookmarks") rather than a hardcoded English guess. Read-only
+  // use of resolveFolderRoots — storage still only ever holds the symbol;
+  // resolving it at reconcile time is flight #6's job.
+  async function loadFolderRootLabels() {
+    try {
+      const tree = await browser.bookmarks.getTree();
+      const resolved = resolveFolderRoots(tree);
+      folderRootLabels = {
+        toolbar: resolved.toolbar?.title ?? FALLBACK_FOLDER_ROOT_LABELS.toolbar,
+        menu: resolved.menu?.title ?? FALLBACK_FOLDER_ROOT_LABELS.menu,
+        other: resolved.other?.title ?? FALLBACK_FOLDER_ROOT_LABELS.other,
+      };
+    } catch {
+      // Tree read failed — keep the plain-English fallback labels.
+    }
+  }
 
   onDestroy(() => {
     unwatchStatus?.();
@@ -100,7 +137,7 @@
     const interval = Math.max(1, Math.round(pollInterval) || DEFAULT_POLL_INTERVAL_MINUTES);
     pollInterval = interval;
     await Promise.all([
-      folderParent.setValue(folderParentValue.trim() || DEFAULT_FOLDER_PARENT),
+      folderParent.setValue(folderParentSymbol),
       pollIntervalMinutes.setValue(interval),
       sourceDevicesEnabled.setValue(devicesEnabled),
       sourceServicesEnabled.setValue(servicesEnabled),
@@ -224,10 +261,14 @@
 
     <label class="flex w-full flex-col gap-2">
       <span class="text-sm font-medium">Folder location</span>
-      <input type="text" class="input w-full" bind:value={folderParentValue} />
+      <select class="select w-full" bind:value={folderParentSymbol}>
+        <option value="toolbar">{folderRootLabels.toolbar}</option>
+        <option value="menu">{folderRootLabels.menu}</option>
+        <option value="other">{folderRootLabels.other}</option>
+      </select>
       <span class="text-xs text-base-content/70">
-        Name of an existing bookmarks folder the tailnet folder lives under, e.g. "Other
-        Bookmarks" or "Bookmarks Toolbar".
+        Where the tailnet folder lives. The same choice on every machine, computed locally on
+        each — not a shared folder id.
       </span>
     </label>
 

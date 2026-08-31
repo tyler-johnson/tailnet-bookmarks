@@ -13,9 +13,11 @@
 //
 // This module is options-owned, but the shapes below are the contract
 // flight #6 (background) reads and writes against — see the last-run status
-// section and the closing flight comment for the exact types.
+// section, the FolderRootSymbol section, and the closing flight comment for
+// the exact types.
 
 import { storage } from '#imports';
+import type { Browser } from 'wxt/browser';
 
 export const TAILSCALE_ORIGIN = 'https://api.tailscale.com/*';
 
@@ -31,16 +33,23 @@ export const oauthClientSecret = storage.defineItem<string>('local:oauthClientSe
 
 // --- storage.sync: shared config, same desired set on every machine --------
 
-export const DEFAULT_FOLDER_PARENT = 'Other Bookmarks';
+// A symbol, never a title or an id. Root folder titles are localized (a
+// German Firefox's "Other Bookmarks" is "Andere Lesezeichen") and Chromium
+// and Firefox spell their roots differently from each other ("Other
+// bookmarks"/"Bookmarks bar" vs. "Other Bookmarks"/"Bookmarks Toolbar"), so
+// neither a title nor a default title is portable — and free text can't
+// tell a typo from a folder that's genuinely missing. A symbol is portable
+// where both a title and a node id are not (DESIGN.md "Convergent
+// identity"). Resolving the symbol to *this machine's* local root id is
+// flight #6's job, at reconcile time — see resolveFolderRootId below, which
+// options also uses, read-only, to label the picker with this browser's
+// own words.
+export type FolderRootSymbol = 'toolbar' | 'menu' | 'other';
+
+export const DEFAULT_FOLDER_PARENT: FolderRootSymbol = 'other';
 export const DEFAULT_POLL_INTERVAL_MINUTES = 30;
 
-// Identified by title, not id: DESIGN.md "Convergent identity" is explicit
-// that a bookmark node's local id is not portable between machines, so the
-// parent folder a machine syncs against is resolved by walking the tree by
-// title at run time (same as the managed folder itself), never by a cached
-// id. A plain folder name (e.g. "Other Bookmarks", "Bookmarks Toolbar", or
-// any folder the user already created) is what travels through sync.
-export const folderParent = storage.defineItem<string>('sync:folderParent', {
+export const folderParent = storage.defineItem<FolderRootSymbol>('sync:folderParent', {
   fallback: DEFAULT_FOLDER_PARENT,
 });
 
@@ -78,3 +87,69 @@ export type LastRunStatus =
   | { state: 'error'; startedAt: number; finishedAt: number; message: string };
 
 export const lastRunStatus = storage.defineItem<LastRunStatus>('local:lastRunStatus');
+
+// --- symbol → local root id -------------------------------------------------
+//
+// Exported so #6 writes this mapping once, not twice. Given the live tree
+// from `browser.bookmarks.getTree()`, finds each symbol's corresponding
+// top-level node on *this* machine and returns its real (localized) id and
+// title — never a hardcoded guess independent of what the tree actually
+// contains.
+//
+// Two signals, in order:
+//   1. `folderType` (Chrome 134+): an explicit, localization-proof tag —
+//      'bookmarks-bar' / 'other'. Chrome has no 'menu' equivalent.
+//   2. The id each engine assigns at profile creation, which is stable in
+//      practice though not a documented contract: Firefox's
+//      `toolbar_____` / `menu________` / `unfiled_____`; older/plain
+//      Chromium's `'1'` (bar) / `'2'` (other).
+//
+// A symbol with no match under either signal resolves to `null` — the
+// "sensible fallback" is to say so plainly, not to guess a folder and
+// silently write to the wrong one (the same unknown-vs-empty discipline
+// DESIGN.md's "Per-source slices" applies to a failed API fetch).
+const KNOWN_ROOT_IDS: Record<FolderRootSymbol, readonly string[]> = {
+  toolbar: ['toolbar_____', '1'],
+  menu: ['menu________'],
+  other: ['unfiled_____', '2'],
+};
+
+export interface FolderRootMatch {
+  id: string;
+  title: string;
+}
+
+export function resolveFolderRoots(
+  tree: Browser.bookmarks.BookmarkTreeNode[],
+): Record<FolderRootSymbol, FolderRootMatch | null> {
+  const roots = tree[0]?.children ?? [];
+  const result: Record<FolderRootSymbol, FolderRootMatch | null> = {
+    toolbar: null,
+    menu: null,
+    other: null,
+  };
+
+  for (const node of roots) {
+    let symbol: FolderRootSymbol | null = null;
+    if (node.folderType === 'bookmarks-bar') symbol = 'toolbar';
+    else if (node.folderType === 'other') symbol = 'other';
+    else if (node.folderType === undefined) {
+      symbol =
+        (Object.keys(KNOWN_ROOT_IDS) as FolderRootSymbol[]).find((candidate) =>
+          KNOWN_ROOT_IDS[candidate].includes(node.id),
+        ) ?? null;
+    }
+    if (symbol && result[symbol] === null) {
+      result[symbol] = { id: node.id, title: node.title };
+    }
+  }
+
+  return result;
+}
+
+export function resolveFolderRootId(
+  tree: Browser.bookmarks.BookmarkTreeNode[],
+  symbol: FolderRootSymbol,
+): string | null {
+  return resolveFolderRoots(tree)[symbol]?.id ?? null;
+}
