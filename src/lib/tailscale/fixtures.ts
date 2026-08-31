@@ -19,7 +19,7 @@
 //    `{ port, protocol }` objects
 
 export const tokenResponseFixture = {
-  access_token: 'tskey-oauth-fixture-token',
+  access_token: 'fixture-access-token',
   token_type: 'Bearer',
   expires_in: 3600,
 };

@@ -31,7 +31,7 @@ function jsonResponse(body: unknown, init: { status?: number } = {}): Response {
 function fakeFetch(fail: readonly ('devices' | 'services')[] = []): FetchImpl {
   return vi.fn<FetchImpl>(async (input) => {
     const url = String(input);
-    if (url.includes('/oauth/token')) return jsonResponse({ access_token: 'tskey-x', expires_in: 3600 });
+    if (url.includes('/oauth/token')) return jsonResponse({ access_token: 'fixture-token', expires_in: 3600 });
     if (url.includes('/devices')) {
       return fail.includes('devices') ? jsonResponse({}, { status: 500 }) : jsonResponse(devicesResponseFixture);
     }

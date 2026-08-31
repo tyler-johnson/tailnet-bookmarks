@@ -29,14 +29,14 @@ describe('createSessionTokenStore', () => {
 
   it('round-trips a token through set/get', async () => {
     const store = createSessionTokenStore(fakeSessionKV());
-    const token = { accessToken: 'tskey-abc', expiresAt: 12345 };
+    const token = { accessToken: 'fixture-abc', expiresAt: 12345 };
     await store.set(token);
     await expect(store.get()).resolves.toEqual(token);
   });
 
   it('clear() removes the stored token', async () => {
     const store = createSessionTokenStore(fakeSessionKV());
-    await store.set({ accessToken: 'tskey-abc', expiresAt: 12345 });
+    await store.set({ accessToken: 'fixture-abc', expiresAt: 12345 });
     await store.clear();
     await expect(store.get()).resolves.toBeUndefined();
   });
@@ -52,7 +52,7 @@ describe('createSessionTokenStore', () => {
     const kv = fakeSessionKV();
     const writer = createSessionTokenStore(kv);
     const reader = createSessionTokenStore(kv);
-    await writer.set({ accessToken: 'tskey-shared', expiresAt: 999 });
-    await expect(reader.get()).resolves.toEqual({ accessToken: 'tskey-shared', expiresAt: 999 });
+    await writer.set({ accessToken: 'fixture-shared', expiresAt: 999 });
+    await expect(reader.get()).resolves.toEqual({ accessToken: 'fixture-shared', expiresAt: 999 });
   });
 });

@@ -46,7 +46,7 @@ describe('fetchAccessToken', () => {
 
     const token = await fetchAccessToken(CREDENTIALS, fetchImpl, now);
 
-    expect(token).toEqual({ accessToken: 'tskey-oauth-fixture-token', expiresAt: 1_000_000 + 3600 * 1000 });
+    expect(token).toEqual({ accessToken: 'fixture-access-token', expiresAt: 1_000_000 + 3600 * 1000 });
     expect(fetchImpl).toHaveBeenCalledTimes(1);
     const call = fetchImpl.mock.calls[0]!;
     const [url, init] = call;
@@ -93,9 +93,9 @@ describe('getAccessToken', () => {
 
     const token = await getAccessToken(CREDENTIALS, store, { fetchImpl, now: () => 0 });
 
-    expect(token).toBe('tskey-oauth-fixture-token');
+    expect(token).toBe('fixture-access-token');
     expect(fetchImpl).toHaveBeenCalledTimes(1);
-    await expect(store.get()).resolves.toMatchObject({ accessToken: 'tskey-oauth-fixture-token' });
+    await expect(store.get()).resolves.toMatchObject({ accessToken: 'fixture-access-token' });
   });
 
   it('refetches when the cached token is within the expiry skew window', async () => {
@@ -104,7 +104,7 @@ describe('getAccessToken', () => {
 
     const token = await getAccessToken(CREDENTIALS, store, { fetchImpl, now: () => 1_000_000_000 });
 
-    expect(token).toBe('tskey-oauth-fixture-token');
+    expect(token).toBe('fixture-access-token');
     expect(fetchImpl).toHaveBeenCalledTimes(1);
   });
 });
@@ -218,8 +218,8 @@ describe('fetchTailnetData', () => {
     const servicesCall = fetchImpl.mock.calls.find((call) => String(call[0]).includes('/vip-services'))!;
     const devicesAuth = devicesCall[1]?.headers as Record<string, string>;
     const servicesAuth = servicesCall[1]?.headers as Record<string, string>;
-    expect(devicesAuth.Authorization).toBe('Bearer tskey-oauth-fixture-token');
-    expect(servicesAuth.Authorization).toBe('Bearer tskey-oauth-fixture-token');
+    expect(devicesAuth.Authorization).toBe('Bearer fixture-access-token');
+    expect(servicesAuth.Authorization).toBe('Bearer fixture-access-token');
   });
 
   it('both slices are unknown, and neither read is attempted, when the token request fails', async () => {
