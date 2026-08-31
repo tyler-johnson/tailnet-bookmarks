@@ -232,9 +232,19 @@ function splitMagicDnsName(name: string): { host: string; suffix: string } {
  * (DESIGN.md "Data model"); inconsistent casing across polls or
  * machines would otherwise look like a different bookmark.
  *
- * Decision: the title is the device's short `hostname`, falling back to
- * the first label of `name` if `hostname` is blank — a bookmark titled
- * "pi" reads better than one titled "pi.tail-scale.ts.net".
+ * Decision: the title is the device's Tailscale machine name — the first
+ * label of its MagicDNS `name`, which is what the admin console shows and
+ * what a rename there changes. The API's `hostname` field is deliberately
+ * not consulted: it is the OS-reported hostname, and iOS reports
+ * `localhost` for every device, so titling from it puts a bookmark called
+ * "localhost" in the folder for each iPhone. The machine name cannot be
+ * localhost and is unique within a tailnet, because MagicDNS makes it so.
+ *
+ * The cost is capitalization. MagicDNS labels are lowercase and
+ * hyphenated, so a device the OS calls "TJ MacBook Pro 2" is titled
+ * "tj-macbook-pro-2" here. That prettiness is what `hostname` was buying,
+ * and it is traded for a title that is always correct and always agrees
+ * with the console.
  *
  * A device whose `name` isn't a well-formed MagicDNS name is skipped
  * entirely (see `isWellFormedMagicDnsName`) rather than emitting a
@@ -244,7 +254,7 @@ function buildDeviceEntry(device: TailscaleDevice): DesiredBookmark | undefined 
   if (!isWellFormedMagicDnsName(device.name)) return undefined;
 
   const host = device.name.trim().toLowerCase();
-  const title = device.hostname.trim() || splitMagicDnsName(device.name).host;
+  const title = splitMagicDnsName(host).host;
   return { url: `https://${host}/`, title, source: 'devices' };
 }
 

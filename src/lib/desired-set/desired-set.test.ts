@@ -159,6 +159,39 @@ describe('buildDesiredSet', () => {
       expect(result.tailnetSuffix).toBe('aaa.ts.net');
     });
 
+    it('titles an iOS device by its machine name, not the localhost hostname it reports', () => {
+      // Tailscale's devices endpoint returns two different names. `hostname`
+      // is OS-reported and every iOS device reports "localhost"; `name` is
+      // the MagicDNS FQDN whose first label is the machine name the admin
+      // console shows. Found in live data: an iPhone named iphone384 in the
+      // console appeared in the bookmarks folder as "localhost".
+      const data: TailnetData = {
+        devices: okSlice([
+          device({ id: 'n1', name: 'iphone384.tail-scale.ts.net', hostname: 'localhost' }),
+          device({ id: 'n2', name: 'ipad7.tail-scale.ts.net', hostname: 'localhost' }),
+        ]),
+        services: okSlice([]),
+      };
+      const result = buildDesiredSet(data, BOTH_ON);
+      expect(result.status).toBe('ok');
+      if (result.status !== 'ok') return;
+      expect(entriesOf(result)).toEqual([
+        { url: 'https://ipad7.tail-scale.ts.net/', title: 'ipad7', source: 'devices' },
+        { url: 'https://iphone384.tail-scale.ts.net/', title: 'iphone384', source: 'devices' },
+      ]);
+    });
+
+    it('ignores a pretty OS hostname in favour of the machine name', () => {
+      const data: TailnetData = {
+        devices: okSlice([device({ name: 'tj-macbook-pro-2.tail-scale.ts.net', hostname: 'TJ MacBook Pro 2' })]),
+        services: okSlice([]),
+      };
+      const result = buildDesiredSet(data, BOTH_ON);
+      expect(result.status).toBe('ok');
+      if (result.status !== 'ok') return;
+      expect(entriesOf(result)[0]?.title).toBe('tj-macbook-pro-2');
+    });
+
     it('is case-insensitive: differently-cased names still agree on one suffix', () => {
       const data: TailnetData = {
         devices: okSlice([
