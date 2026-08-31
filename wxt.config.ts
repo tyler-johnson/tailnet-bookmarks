@@ -12,6 +12,10 @@ export default defineConfig({
     plugins: [tailwindcss()],
   }),
   manifest: ({ browser }) => ({
+    // The display name, in both store listings and each browser's own
+    // extensions manager. Set here rather than taken from package.json,
+    // whose name has to stay a valid npm package name.
+    name: 'Tailnet Bookmarks',
     permissions: ['bookmarks', 'alarms', 'storage'],
     host_permissions: ['https://api.tailscale.com/*'],
     // Firefox needs a stable id for storage.sync and AMO signing.
