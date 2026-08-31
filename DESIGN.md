@@ -89,6 +89,8 @@ The access token lives in `storage.session` — memory-backed, never written to 
 
 Configuration splits by sensitivity. Folder parent, poll interval, and source toggles live in `storage.sync`, so every machine on the account computes the same desired set from the same settings. The OAuth client secret lives in `storage.local` and is entered once per machine; it never leaves the machine it was typed on.
 
+The split costs nothing in convergence, because only the synced half feeds the desired set. The secret is not an input to it — it gates whether a machine can fetch at all, and a machine without one stays idle rather than reconciling against nothing. Two machines holding different secrets for the same tailnet read the same API and agree; for different tailnets they derive different folder names and never contend. Delete-lag state stays local on the same reasoning: each machine counting its own two-poll window is sufficient, and the rules converge whether or not two machines count in step. The per-machine setup step is the whole price, and it buys keeping the secret off Mozilla's and Google's servers — Chromium encrypts synced data only when a passphrase is set.
+
 > **Constraint:** the client secret sits in `storage.local`, unencrypted, in the browser profile. Acceptable for a personal read-only scope; not acceptable for anything with write access, and a hard blocker on public distribution.
 
 ## Data model
