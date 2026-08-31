@@ -1,2 +1,123 @@
 @import 'tailwindcss';
 @plugin 'daisyui';
+
+/* Inter, self-hosted latin-subset variable woff2 (SIL OFL 1.1), matching
+   the family the Tailscale admin console and login page ship
+   (Inter.var.latin.woff2). No CDN: an extension can't fetch fonts at
+   runtime, so the file lives in the bundle and Vite hashes/serves it. */
+@font-face {
+  font-family: 'Inter';
+  font-style: normal;
+  font-weight: 100 900;
+  font-display: swap;
+  src: url('./fonts/inter-var-latin.woff2') format('woff2-variations');
+}
+
+body {
+  font-family:
+    'Inter',
+    -apple-system,
+    BlinkMacSystemFont,
+    Helvetica,
+    Arial,
+    sans-serif;
+}
+
+/* Light scheme, values read first-party from login.tailscale.com's inline
+   stylesheet (blues, radii, control metrics) and from Tyler's ramp for the
+   colors the login page doesn't use (base surfaces, secondary, semantic
+   status colors). See flight #11 comments for sourcing. */
+@plugin 'daisyui/theme' {
+  name: 'tailscale-light';
+  default: true;
+  prefersdark: false;
+  color-scheme: light;
+
+  --color-base-100: oklch(100% 0 0); /* #FFFFFF - bg-base */
+  --color-base-200: oklch(97.14% 0.003 48.72); /* #F7F5F4 - bg-app */
+  --color-base-300: oklch(94.21% 0.004 39.48); /* #EEEBEA - border-base */
+  --color-base-content: oklch(25.3% 0.002 17.26); /* #232222 - text-base */
+
+  --color-primary: oklch(56.43% 0.148 265.45); /* #4B70CC - blue-500 */
+  --color-primary-content: oklch(100% 0 0); /* #FFFFFF */
+
+  --color-secondary: oklch(38.35% 0.002 67.76); /* #444342 - gray-600 */
+  --color-secondary-content: oklch(100% 0 0); /* #FFFFFF */
+
+  --color-accent: oklch(50.12% 0.141 266.83); /* #3F5DB3 - blue-600 */
+  --color-accent-content: oklch(100% 0 0); /* #FFFFFF */
+
+  --color-neutral: oklch(25.3% 0.002 17.26); /* #232222 - gray-800 */
+  --color-neutral-content: oklch(97.14% 0.003 48.72); /* #F7F5F4 */
+
+  --color-info: oklch(56.43% 0.148 265.45); /* #4B70CC */
+  --color-info-content: oklch(100% 0 0); /* #FFFFFF */
+
+  --color-success: oklch(44.15% 0.089 163.63); /* #0E6245 - green-500 */
+  --color-success-content: oklch(100% 0 0); /* #FFFFFF */
+
+  --color-warning: oklch(46.96% 0.14 41.4); /* #983705 - yellow-500 */
+  --color-warning-content: oklch(100% 0 0); /* #FFFFFF */
+
+  --color-error: oklch(42.44% 0.166 21.64); /* #940821 - red-600 */
+  --color-error-content: oklch(100% 0 0); /* #FFFFFF */
+
+  /* Rounding, borders and shading: identical across both schemes on
+     purpose - these are not properties of light vs. dark, and letting
+     them drift is how a theme starts feeling like two products. */
+  --radius-selector: 0.25rem;
+  --radius-field: 0.375rem; /* console button/input radius */
+  --radius-box: 0.5rem;
+  --size-field: 0.2rem; /* --size-field * 10 = 2rem (32px) default control height */
+  --border: 1px;
+  --depth: 0;
+  --noise: 0;
+}
+
+/* Dark scheme, built (not matched) per Tyler's flight-11 comment: the
+   login page has no dark form, so this extends the same blue/warm-neutral
+   system with a brand-plausible dark ramp rather than inverting the light
+   palette. Follows the OS via prefersdark. */
+@plugin 'daisyui/theme' {
+  name: 'tailscale-dark';
+  default: false;
+  prefersdark: true;
+  color-scheme: dark;
+
+  --color-base-100: oklch(23.61% 0.002 17.27); /* #1F1E1E - bg-base */
+  --color-base-200: oklch(20.58% 0.002 17.29); /* #181717 - bg-app */
+  --color-base-300: oklch(29.82% 0.001 17.24); /* #2E2D2D - border-base */
+  --color-base-content: oklch(97.14% 0.003 48.72); /* #F7F5F4 - text-base */
+
+  --color-primary: oklch(67.63% 0.138 264.51); /* #6C94EC - blue-300 */
+  --color-primary-content: oklch(17.42% 0.002 17.32); /* #111010 */
+
+  --color-secondary: oklch(29.82% 0.001 17.24); /* #2E2D2D - gray-700 */
+  --color-secondary-content: oklch(97.14% 0.003 48.72); /* #F7F5F4 */
+
+  --color-accent: oklch(62.1% 0.146 264.78); /* #5A82DE - blue-400 */
+  --color-accent-content: oklch(17.42% 0.002 17.32); /* #111010 */
+
+  --color-neutral: oklch(29.82% 0.001 17.24); /* #2E2D2D */
+  --color-neutral-content: oklch(97.14% 0.003 48.72); /* #F7F5F4 */
+
+  --color-info: oklch(67.63% 0.138 264.51); /* #6C94EC */
+  --color-info-content: oklch(17.42% 0.002 17.32); /* #111010 */
+
+  --color-success: oklch(64.38% 0.136 161.16); /* #1EA672 - green-300 */
+  --color-success-content: oklch(17.42% 0.002 17.32); /* #111010 */
+
+  --color-warning: oklch(66.96% 0.154 58.06); /* #D97917 - yellow-300 */
+  --color-warning-content: oklch(17.42% 0.002 17.32); /* #111010 */
+
+  --color-error: oklch(67.27% 0.151 26.24); /* #E46C63 - red-300 */
+  --color-error-content: oklch(17.42% 0.002 17.32); /* #111010 */
+
+  --radius-selector: 0.25rem;
+  --radius-field: 0.375rem;
+  --radius-box: 0.5rem;
+  --size-field: 0.2rem;
+  --border: 1px;
+  --depth: 0;
+  --noise: 0;
+}
