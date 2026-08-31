@@ -1,4 +1,19 @@
-@import 'tailwindcss';
+@import 'tailwindcss' source(none);
+
+/* Tailwind v4 auto-detects source files, and it matches class names as bare
+   words in any file it finds. That swept in things that are not markup: the
+   word "table" in a test comment pulled daisyUI's whole .table component
+   into the bundle, and .tower/skills/work.md — the crew protocol, which
+   lists form-control, label-text, input-bordered and fieldset as classes NOT
+   to use — pulled those in too. Dead CSS on its own, and it also broke
+   source-archive reproducibility: AMO's sources zip excludes tests and
+   .tower, so a reviewer's rebuild emitted a different stylesheet than the
+   uploaded package, and AMO requires the diff to be clean.
+
+   Blocklisting each offender is a losing game, so detection is off and the
+   one directory that actually contains markup is declared instead. Nothing
+   under src/lib is a UI; it is all pure logic with no class names. */
+@source "../entrypoints";
 @plugin 'daisyui' {
   themes: false;
 }

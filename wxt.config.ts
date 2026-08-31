@@ -9,7 +9,41 @@ export default defineConfig({
   // defaults Firefox to MV2 unless told otherwise.
   manifestVersion: 3,
   vite: () => ({
-    plugins: [tailwindcss()],
+    plugins: [
+      tailwindcss(),
+      {
+        // Strip content hashes out of emitted filenames.
+        //
+        // Rollup's hash folds in module ids, which carry the absolute build
+        // path, so the same source built from a different directory emits
+        // different chunk names — and every file that names a chunk (the
+        // other chunks, the CSS, both HTML entrypoints) then differs too.
+        // AMO rebuilds a submitted sources archive and diffs the result
+        // against the uploaded package, requiring no differences at all, so
+        // a path-dependent name is a rejection risk rather than a cosmetic
+        // one. Cache busting buys nothing here: these files load from the
+        // extension bundle, never over a network.
+        //
+        // WXT sets these itself in getMultiPageConfig and its config merges
+        // after this one, so the `vite` option cannot override them. Rollup's
+        // outputOptions hook runs late enough to win. Rather than restate
+        // WXT's routing (html entrypoints go to chunks/, background.js stays
+        // at the root) this keeps its own value and removes only the token.
+        name: 'tailnet-bookmarks:deterministic-filenames',
+        outputOptions(options) {
+          const entry = options.entryFileNames;
+          return {
+            ...options,
+            chunkFileNames: 'chunks/[name].js',
+            assetFileNames: 'assets/[name].[ext]',
+            entryFileNames:
+              typeof entry === 'function'
+                ? (info) => String(entry(info)).replace('-[hash]', '')
+                : String(entry ?? '[name].js').replace('-[hash]', ''),
+          };
+        },
+      },
+    ],
   }),
   manifest: ({ browser }) => ({
     // The display name, in both store listings and each browser's own
