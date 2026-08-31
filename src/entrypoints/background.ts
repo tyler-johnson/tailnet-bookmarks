@@ -50,7 +50,7 @@ import {
   TAILSCALE_ORIGIN,
   type LastRunStatus,
 } from '../lib/storage';
-import { MANUAL_SYNC_MESSAGE_TYPE, type ManualSyncResponse } from './options/messages';
+import { MANUAL_SYNC_MESSAGE_TYPE, type ManualSyncResponse } from '../lib/messages';
 
 export default defineBackground(() => {
   browser.alarms.onAlarm.addListener((alarm) => {

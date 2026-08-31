@@ -16,7 +16,7 @@
     type LastRunStatus,
     type FolderRootSymbol,
   } from '../../lib/storage';
-  import { MANUAL_SYNC_MESSAGE_TYPE, isManualSyncResponse, type ManualSyncRequest } from './messages';
+  import { MANUAL_SYNC_MESSAGE_TYPE, isManualSyncResponse, type ManualSyncRequest } from '../../lib/messages';
 
   // storage.local — this machine only, never synced (DESIGN.md "Auth").
   let clientId = $state('');

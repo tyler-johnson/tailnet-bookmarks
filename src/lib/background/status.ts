@@ -38,9 +38,9 @@ export function deleteLagMsFromPollInterval(pollIntervalMinutes: number): number
 
 /** Whether a run can even start, and why not if it can't. Checked before
  * a "running" status is ever written — DESIGN.md's manual-sync contract
- * (see src/entrypoints/options/messages.ts) has background "respond
- * { ok: false, error } if it can't start (e.g. missing config or missing
- * host permission)" without implying a run was attempted at all. */
+ * (see src/lib/messages) has background "respond { ok: false, error } if
+ * it can't start (e.g. missing config or missing host permission)"
+ * without implying a run was attempted at all. */
 export function checkCanStart(input: {
   clientId: string;
   clientSecret: string;
