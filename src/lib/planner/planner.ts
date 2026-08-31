@@ -370,8 +370,8 @@ function bookmarksToPairs(bookmarks: readonly ActualBookmark[]): Pair[] {
 function hashPairs(pairs: readonly Pair[]): string {
   const canonical = [...pairs]
     .sort((a, b) => a[0].localeCompare(b[0]))
-    .map(([url, title]) => `${url} ${title}`)
-    .join('');
+    .map(([url, title]) => `${url}\u0000${title}`)
+    .join('\u0001');
   return cyrb53(canonical);
 }
 
